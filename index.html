@@ -3,43 +3,147 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Тетрис</title>
+  <title>Тетрис — neon</title>
   <style>
-    body { margin:0; font-family:Arial,sans-serif; background:#111; color:#fff; display:grid; place-items:center; height:100vh; }
-    .box { text-align:center; }
-    canvas { border:4px solid #444; background:#000; }
-    .info { margin-top:8px; }
+    :root { color-scheme: dark; }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: Arial, sans-serif;
+      background: radial-gradient(circle at top, #2a0f5b, #050510 70%);
+      color: #fff;
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      overflow: hidden;
+    }
+    .panel {
+      background: rgba(10, 10, 20, 0.92);
+      border: 1px solid rgba(255,255,255,0.15);
+      border-radius: 20px;
+      padding: 20px;
+      box-shadow: 0 0 30px rgba(0,0,0,0.45);
+      display: flex;
+      gap: 20px;
+      align-items: center;
+    }
+    canvas {
+      border: 4px solid #7c3aed;
+      border-radius: 12px;
+      background: #000;
+      box-shadow: inset 0 0 20px rgba(124,58,237,0.35);
+    }
+    .stats {
+      min-width: 180px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .card {
+      background: linear-gradient(135deg, #1a1236, #2e1d4b);
+      padding: 12px 14px;
+      border-radius: 12px;
+      border: 1px solid rgba(255,255,255,0.12);
+    }
+    .label { font-size: 12px; color: #b8a9ff; text-transform: uppercase; letter-spacing: 1px; }
+    .value { font-size: 24px; font-weight: bold; margin-top: 4px; }
+    .hint { font-size: 13px; color: #cfc6ff; line-height: 1.5; }
+    .overlay {
+      position: fixed;
+      inset: 0;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      background: rgba(0,0,0,0.75);
+      z-index: 10;
+    }
+    .overlay.show { display: flex; }
+    .overlay-box {
+      text-align: center;
+      padding: 30px 40px;
+      border-radius: 20px;
+      background: rgba(255,255,255,0.08);
+      border: 1px solid rgba(255,255,255,0.2);
+      backdrop-filter: blur(10px);
+    }
+    .overlay-box h1 { margin: 0 0 10px; font-size: 38px; }
+    .overlay-box button {
+      margin-top: 12px;
+      padding: 10px 16px;
+      border: none;
+      border-radius: 999px;
+      background: linear-gradient(90deg, #8b5cf6, #22d3ee);
+      color: white;
+      font-weight: bold;
+      cursor: pointer;
+    }
   </style>
 </head>
 <body>
-  <div class="box">
+  <div class="panel">
     <canvas id="c" width="300" height="600"></canvas>
-    <div class="info">Счёт: <b id="score">0</b></div>
+    <div class="stats">
+      <div class="card">
+        <div class="label">Счёт</div>
+        <div class="value" id="score">0</div>
+      </div>
+      <div class="card">
+        <div class="label">Уровень</div>
+        <div class="value" id="level">1</div>
+      </div>
+      <div class="card hint">
+        Управление: ← → перемещение<br>
+        ↑ поворот<br>
+        ↓ ускорение<br>
+        Пробел — вниз быстро
+      </div>
+    </div>
   </div>
+
+  <div id="overlay" class="overlay">
+    <div class="overlay-box">
+      <div id="overlayEmoji" style="font-size:60px; margin-bottom:8px;">😢</div>
+      <h1 id="overlayTitle">Поражение</h1>
+      <div id="overlayText">Ты проиграл</div>
+      <button id="restartBtn">Играть снова</button>
+    </div>
+  </div>
+
   <script>
     const c = document.getElementById('c');
     const ctx = c.getContext('2d');
+    const scoreEl = document.getElementById('score');
+    const levelEl = document.getElementById('level');
+    const overlay = document.getElementById('overlay');
+    const overlayEmoji = document.getElementById('overlayEmoji');
+    const overlayTitle = document.getElementById('overlayTitle');
+    const overlayText = document.getElementById('overlayText');
+    const restartBtn = document.getElementById('restartBtn');
+
     const size = 30;
     const rows = 20, cols = 10;
-    let board = Array.from({length: rows}, () => Array(cols).fill(0));
+    let board = Array.from({ length: rows }, () => Array(cols).fill(null));
     let score = 0;
+    let level = 1;
     let piece = null;
-    let interval = 500;
+    let gameOver = false;
+    let celebration = false;
+    let timer = null;
 
     const shapes = {
-      I: [[1,1,1,1]],
-      O: [[1,1],[1,1]],
-      T: [[0,1,0],[1,1,1]],
-      S: [[0,1,1],[1,1,0]],
-      Z: [[1,1,0],[0,1,1]],
-      J: [[1,0,0],[1,1,1]],
-      L: [[0,0,1],[1,1,1]]
+      I: { color: '#22d3ee', matrix: [[1,1,1,1]] },
+      O: { color: '#fbbf24', matrix: [[1,1],[1,1]] },
+      T: { color: '#a78bfa', matrix: [[0,1,0],[1,1,1]] },
+      S: { color: '#34d399', matrix: [[0,1,1],[1,1,0]] },
+      Z: { color: '#fb7185', matrix: [[1,1,0],[0,1,1]] },
+      J: { color: '#60a5fa', matrix: [[1,0,0],[1,1,1]] },
+      L: { color: '#f59e0b', matrix: [[0,0,1],[1,1,1]] }
     };
 
     function randomPiece() {
-      const name = Object.keys(shapes)[Math.floor(Math.random()*7)];
-      const matrix = shapes[name];
-      return {name, matrix, x: Math.floor(cols/2) - Math.ceil(matrix[0].length/2), y: 0};
+      const entries = Object.entries(shapes);
+      const [name, data] = entries[Math.floor(Math.random() * entries.length)];
+      return { name, color: data.color, matrix: data.matrix.map(row => [...row]), x: Math.floor(cols / 2) - Math.ceil(data.matrix[0].length / 2), y: 0 };
     }
 
     function collide(p, x = p.x, y = p.y) {
@@ -53,30 +157,58 @@
       return false;
     }
 
+    function updateStats() {
+      scoreEl.textContent = score;
+      levelEl.textContent = level;
+    }
+
+    function startLoop() {
+      if (timer) clearInterval(timer);
+      timer = setInterval(tick, Math.max(120, 520 - (level - 1) * 45));
+    }
+
+    function spawnPiece() {
+      piece = randomPiece();
+      if (collide(piece)) {
+        gameOver = true;
+        showOverlay('😢', 'Поражение', 'Ты проиграл. Попробуй ещё раз!');
+      }
+    }
+
     function merge() {
       for (let r = 0; r < piece.matrix.length; r++) {
         for (let c = 0; c < piece.matrix[r].length; c++) {
-          if (piece.matrix[r][c]) board[piece.y + r][piece.x + c] = 1;
+          if (piece.matrix[r][c]) board[piece.y + r][piece.x + c] = piece.color;
         }
       }
       clearLines();
-      piece = randomPiece();
-      if (collide(piece)) { alert('Игра окончена!'); reset(); }
+      spawnPiece();
     }
 
     function clearLines() {
       let lines = 0;
       for (let r = rows - 1; r >= 0; r--) {
-        if (board[r].every(v => v)) {
+        if (board[r].every(cell => cell)) {
           board.splice(r, 1);
-          board.unshift(Array(cols).fill(0));
+          board.unshift(Array(cols).fill(null));
           lines++;
           r++;
         }
       }
       if (lines) {
-        score += lines * 10;
-        document.getElementById('score').textContent = score;
+        score += lines * 20;
+        level = Math.floor(score / 100) + 1;
+        updateStats();
+        startLoop();
+        if (score >= 100 && !celebration) {
+          celebration = true;
+          showOverlay('🎉', 'Салют!', '100 очков — поздравляем!');
+          setTimeout(() => {
+            celebration = false;
+            if (gameOver) return;
+            overlay.classList.remove('show');
+          }, 1400);
+        }
       }
     }
 
@@ -93,59 +225,79 @@
       }
     }
 
+    function drawCell(x, y, color) {
+      ctx.fillStyle = color || '#111';
+      ctx.fillRect(x * size + 1, y * size + 1, size - 2, size - 2);
+      ctx.strokeStyle = 'rgba(255,255,255,0.08)';
+      ctx.strokeRect(x * size + 1, y * size + 1, size - 2, size - 2);
+    }
+
     function draw() {
       ctx.clearRect(0, 0, c.width, c.height);
-      ctx.fillStyle = '#222';
+      ctx.fillStyle = '#06060d';
       ctx.fillRect(0, 0, c.width, c.height);
+
       for (let y = 0; y < rows; y++) {
         for (let x = 0; x < cols; x++) {
-          if (board[y][x]) { ctx.fillStyle = '#0f0'; ctx.fillRect(x*size, y*size, size-1, size-1); }
+          if (board[y][x]) drawCell(x, y, board[y][x]);
         }
       }
-      for (let r = 0; r < piece.matrix.length; r++) {
-        for (let c = 0; c < piece.matrix[r].length; c++) {
-          if (piece.matrix[r][c]) {
-            ctx.fillStyle = '#ff0';
-            ctx.fillRect((piece.x + c) * size, (piece.y + r) * size, size-1, size-1);
+      if (piece) {
+        for (let r = 0; r < piece.matrix.length; r++) {
+          for (let c = 0; c < piece.matrix[r].length; c++) {
+            if (piece.matrix[r][c]) drawCell(piece.x + c, piece.y + r, piece.color);
           }
         }
       }
     }
 
     function tick() {
+      if (gameOver) return;
       if (collide(piece, piece.x, piece.y + 1)) merge();
       else piece.y++;
       draw();
     }
 
-    function reset() {
-      board = Array.from({length: rows}, () => Array(cols).fill(0));
-      score = 0;
-      document.getElementById('score').textContent = score;
-      piece = randomPiece();
+    function showOverlay(emoji, title, text) {
+      overlayEmoji.textContent = emoji;
+      overlayTitle.textContent = title;
+      overlayText.textContent = text;
+      overlay.classList.add('show');
     }
 
-    document.addEventListener('keydown', e => {
-      if (!piece) return;
+    function reset() {
+      board = Array.from({ length: rows }, () => Array(cols).fill(null));
+      score = 0;
+      level = 1;
+      gameOver = false;
+      celebration = false;
+      overlay.classList.remove('show');
+      updateStats();
+      spawnPiece();
+      draw();
+      startLoop();
+    }
+
+    document.addEventListener('keydown', (e) => {
+      if (!piece || gameOver) {
+        if ((e.key === 'Enter' || e.key.toLowerCase() === 'r') && gameOver) reset();
+        return;
+      }
       if (e.key === 'ArrowLeft' && !collide(piece, piece.x - 1, piece.y)) piece.x--;
       if (e.key === 'ArrowRight' && !collide(piece, piece.x + 1, piece.y)) piece.x++;
       if (e.key === 'ArrowDown') tick();
       if (e.key === 'ArrowUp') rotate();
       if (e.key === ' ') {
-        let moved = 0;
-        while (!collide(piece, piece.x, piece.y + 1) && moved < 8) {
-          piece.y++;
-          moved++;
-        }
+        while (!collide(piece, piece.x, piece.y + 1)) piece.y++;
         tick();
         e.preventDefault();
       }
       draw();
     });
 
+    restartBtn.addEventListener('click', reset);
+
     reset();
-    draw();
-    setInterval(tick, interval);
   </script>
 </body>
 </html>
