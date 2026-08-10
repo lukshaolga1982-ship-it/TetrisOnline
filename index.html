@@ -1,0 +1,151 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Тетрис</title>
+  <style>
+    body { margin:0; font-family:Arial,sans-serif; background:#111; color:#fff; display:grid; place-items:center; height:100vh; }
+    .box { text-align:center; }
+    canvas { border:4px solid #444; background:#000; }
+    .info { margin-top:8px; }
+  </style>
+</head>
+<body>
+  <div class="box">
+    <canvas id="c" width="300" height="600"></canvas>
+    <div class="info">Счёт: <b id="score">0</b></div>
+  </div>
+  <script>
+    const c = document.getElementById('c');
+    const ctx = c.getContext('2d');
+    const size = 30;
+    const rows = 20, cols = 10;
+    let board = Array.from({length: rows}, () => Array(cols).fill(0));
+    let score = 0;
+    let piece = null;
+    let interval = 500;
+
+    const shapes = {
+      I: [[1,1,1,1]],
+      O: [[1,1],[1,1]],
+      T: [[0,1,0],[1,1,1]],
+      S: [[0,1,1],[1,1,0]],
+      Z: [[1,1,0],[0,1,1]],
+      J: [[1,0,0],[1,1,1]],
+      L: [[0,0,1],[1,1,1]]
+    };
+
+    function randomPiece() {
+      const name = Object.keys(shapes)[Math.floor(Math.random()*7)];
+      const matrix = shapes[name];
+      return {name, matrix, x: Math.floor(cols/2) - Math.ceil(matrix[0].length/2), y: 0};
+    }
+
+    function collide(p, x = p.x, y = p.y) {
+      for (let r = 0; r < p.matrix.length; r++) {
+        for (let c = 0; c < p.matrix[r].length; c++) {
+          if (!p.matrix[r][c]) continue;
+          const nx = x + c, ny = y + r;
+          if (nx < 0 || nx >= cols || ny >= rows || (ny >= 0 && board[ny][nx])) return true;
+        }
+      }
+      return false;
+    }
+
+    function merge() {
+      for (let r = 0; r < piece.matrix.length; r++) {
+        for (let c = 0; c < piece.matrix[r].length; c++) {
+          if (piece.matrix[r][c]) board[piece.y + r][piece.x + c] = 1;
+        }
+      }
+      clearLines();
+      piece = randomPiece();
+      if (collide(piece)) { alert('Игра окончена!'); reset(); }
+    }
+
+    function clearLines() {
+      let lines = 0;
+      for (let r = rows - 1; r >= 0; r--) {
+        if (board[r].every(v => v)) {
+          board.splice(r, 1);
+          board.unshift(Array(cols).fill(0));
+          lines++;
+          r++;
+        }
+      }
+      if (lines) {
+        score += lines * 10;
+        document.getElementById('score').textContent = score;
+      }
+    }
+
+    function rotate() {
+      if (!piece) return;
+      const rotated = piece.matrix[0].map((_, i) => piece.matrix.map(row => row[i]).reverse());
+      const tmp = { ...piece, matrix: rotated };
+      const offsets = [0, -1, 1, -2, 2];
+      for (const offset of offsets) {
+        if (!collide(tmp, piece.x + offset, piece.y)) {
+          piece = { ...tmp, x: piece.x + offset };
+          return;
+        }
+      }
+    }
+
+    function draw() {
+      ctx.clearRect(0, 0, c.width, c.height);
+      ctx.fillStyle = '#222';
+      ctx.fillRect(0, 0, c.width, c.height);
+      for (let y = 0; y < rows; y++) {
+        for (let x = 0; x < cols; x++) {
+          if (board[y][x]) { ctx.fillStyle = '#0f0'; ctx.fillRect(x*size, y*size, size-1, size-1); }
+        }
+      }
+      for (let r = 0; r < piece.matrix.length; r++) {
+        for (let c = 0; c < piece.matrix[r].length; c++) {
+          if (piece.matrix[r][c]) {
+            ctx.fillStyle = '#ff0';
+            ctx.fillRect((piece.x + c) * size, (piece.y + r) * size, size-1, size-1);
+          }
+        }
+      }
+    }
+
+    function tick() {
+      if (collide(piece, piece.x, piece.y + 1)) merge();
+      else piece.y++;
+      draw();
+    }
+
+    function reset() {
+      board = Array.from({length: rows}, () => Array(cols).fill(0));
+      score = 0;
+      document.getElementById('score').textContent = score;
+      piece = randomPiece();
+    }
+
+    document.addEventListener('keydown', e => {
+      if (!piece) return;
+      if (e.key === 'ArrowLeft' && !collide(piece, piece.x - 1, piece.y)) piece.x--;
+      if (e.key === 'ArrowRight' && !collide(piece, piece.x + 1, piece.y)) piece.x++;
+      if (e.key === 'ArrowDown') tick();
+      if (e.key === 'ArrowUp') rotate();
+      if (e.key === ' ') {
+        let moved = 0;
+        while (!collide(piece, piece.x, piece.y + 1) && moved < 8) {
+          piece.y++;
+          moved++;
+        }
+        tick();
+        e.preventDefault();
+      }
+      draw();
+    });
+
+    reset();
+    draw();
+    setInterval(tick, interval);
+  </script>
+</body>
+</html>
